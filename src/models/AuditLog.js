@@ -24,7 +24,10 @@ AuditLog.init(
 
     entityType: { type: DataTypes.STRING, allowNull: false }, // e.g. 'Employee'
     entityId: { type: DataTypes.UUID, allowNull: false },
-    action: { type: DataTypes.ENUM('create', 'update', 'delete', 'status_change'), allowNull: false },
+    action: {
+      type: DataTypes.ENUM('create', 'update', 'delete', 'status_change', 'upload', 'view', 'download'),
+      allowNull: false,
+    },
     fieldName: { type: DataTypes.STRING }, // e.g. 'jobTitle' - null for whole-record create/delete
     oldValue: { type: DataTypes.TEXT },
     newValue: { type: DataTypes.TEXT },
