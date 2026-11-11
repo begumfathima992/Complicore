@@ -7,6 +7,7 @@ function signAccessToken(user) {
       role: user.Role.key,
       companyId: user.companyId,
       employeeId: user.employeeId,
+      tokenVersion: user.tokenVersion,
     },
     process.env.JWT_ACCESS_SECRET,
     { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m' }
@@ -14,7 +15,7 @@ function signAccessToken(user) {
 }
 
 function signRefreshToken(user) {
-  return jwt.sign({ sub: user.id }, process.env.JWT_REFRESH_SECRET, {
+  return jwt.sign({ sub: user.id, tokenVersion: user.tokenVersion }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   });
 }

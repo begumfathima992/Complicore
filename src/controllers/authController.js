@@ -6,7 +6,9 @@ async function login(req, res) {
   const { email, password } = req.body;
   if (!email || !password) throw new AppError('Email and password are required', 400);
 
-  const user = await User.findOne({ where: { email }, include: Role });
+  // Emails are stored lowercase (see User model) - normalize the lookup
+  // the same way, so case doesn't affect whether login finds the account.
+  const user = await User.findOne({ where: { email: email.trim().toLowerCase() }, include: Role });
   if (!user || !user.isActive) throw new AppError('Invalid credentials', 401);
 
   const valid = await user.validatePassword(password);
@@ -43,7 +45,9 @@ async function refresh(req, res) {
   }
 
   const user = await User.findByPk(payload.sub, { include: Role });
-  if (!user || !user.isActive) throw new AppError('Invalid refresh token', 401);
+  if (!user || !user.isActive || user.tokenVersion !== payload.tokenVersion) {
+    throw new AppError('Invalid refresh token', 401);
+  }
 
   res.json({ accessToken: signAccessToken(user) });
 }
