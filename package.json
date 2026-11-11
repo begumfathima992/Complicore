@@ -11,6 +11,8 @@
     "alerts:sync": "node scripts/generateAlerts.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1166.0",
+    "@aws-sdk/s3-request-presigner": "^3.1166.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -19,10 +21,13 @@
     "express-async-errors": "^3.1.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.6.0",
     "pdfkit": "^0.15.0",
     "pg": "^8.12.0",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.3"
+    "resend": "^6.38.0",
+    "sequelize": "^6.37.3",
+    "sequelize-cli": "^6.6.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
