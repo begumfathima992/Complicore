@@ -17,6 +17,7 @@ const HolidayRequest = require('./HolidayRequest');
 const Absence = require('./Absence');
 const RolePermissionRestriction = require('./RolePermissionRestriction');
 const AuditLog = require('./AuditLog');
+const SentExpiryAlert = require('./SentExpiryAlert');
 
 // --- Company (tenant) scoping -------------------------------------------
 Company.hasMany(Department, { foreignKey: 'companyId' });
@@ -173,4 +174,5 @@ module.exports = {
   Absence,
   RolePermissionRestriction,
   AuditLog,
+  SentExpiryAlert,
 };
