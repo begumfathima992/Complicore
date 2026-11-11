@@ -366,12 +366,34 @@ against the same bucket).
    demand (e.g. via the Render shell) if you want to verify it immediately
    rather than waiting for 07:00.
 
+## Tests
+
+```bash
+createdb hrms_test                 # once, a separate throwaway DB - never Neon
+TEST_DB_USER=yourpguser TEST_DB_PASSWORD=yourpgpassword npm test
+```
+
+Jest + Supertest against the real Express app (`src/app.js`) and a
+dedicated local Postgres database (`tests/globalSetup.js` wipes and
+recreates it before each run - `DATABASE_URL`/`DIRECT_URL` are forced
+blank in `tests/setupEnv.js` so a test run can never touch Neon). Covers
+the three regressions this round of work specifically fixed or added:
+
+- `tests/userManagement.test.js` - duplicate email returns 409 with the
+  exact message, including case-insensitively (not the original 500).
+- `tests/documentsCrossTenant.test.js` - a company B user gets 404, not a
+  pre-signed URL, for company A's document view/download link.
+- `tests/expiryAlertJob.test.js` - the expiry-alert job sends exactly one
+  email the first time an item crosses a threshold, then zero on an
+  identical same-day rerun.
+
 ## Next
 
 Every module from the original spec is implemented, plus a React frontend
-(`frontend/`) and the production deployment path above (Neon migrations,
-Cloudflare R2 document storage, Render, daily expiry-alert emails).
-Automated tests are the main remaining gap - this project has caught real
-bugs (including the authorization issue above) only by live-testing; see
-`npm test` once the test suite lands for the specific regressions it's
-designed to catch.
+(`frontend/`), the production deployment path above (Neon migrations,
+Cloudflare R2 document storage, Render, daily expiry-alert emails), and a
+starter automated test suite (see **Tests**) covering the regressions this
+round of work found or fixed. Worth growing from here: broader test
+coverage (most of this project was still verified by live-testing rather
+than an automated suite), and a real transactional email flow for new-user
+temporary passwords instead of returning them once in the API response.
