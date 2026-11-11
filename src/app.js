@@ -25,10 +25,16 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+// SITE_ORIGIN restricts CORS to the deployed frontend in production; with
+// it unset (local dev) all origins are allowed, same as before.
+app.use(cors(process.env.SITE_ORIGIN ? { origin: process.env.SITE_ORIGIN } : {}));
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// Render's health check convention lives under /api/*; kept alongside the
+// original /health rather than replacing it, since nothing else referenced
+// /health needed to change.
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);

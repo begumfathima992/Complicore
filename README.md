@@ -277,25 +277,101 @@ only Super Admin creates a company.
    `listAuditLogs`/`getAuditLog` were already correctly company-scoped and
    are unaffected.
 
-## Note on schema changes in this module
+## Note on schema changes in this module (historical - superseded below)
 
-The Alert model's shape changed substantially for the generalized engine
-(new `alertType` enum, `info/low/medium/high/critical` severity replacing
-the earlier three-tier scheme, `sourceId` as a string not a UUID). This
-project doesn't yet have a real migrations system (no sequelize-cli/Umzug),
-so `npm run db:sync` uses Sequelize's `alter: true`, which cannot cleanly
-change an existing ENUM column. If you're pulling this update onto a
-database that already ran `db:sync` before, the safest path is to drop and
-recreate the schema (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`
-then `npm run db:sync && npm run db:seed`) rather than trying to alter in
-place, since it's dev/test data at this stage. Worth introducing real
-migrations before this goes anywhere near production data.
+This note described `npm run db:sync` (Sequelize `alter: true`) as the only
+way to apply schema changes, with no real migrations system. That's no
+longer true - see **Production deployment** below for the versioned
+`sequelize-cli` migrations now used for Neon/production. `db:sync`/`db:seed`
+remain as the quick local-dev path (plain discrete `DB_*` vars, no
+`DATABASE_URL`/`DIRECT_URL` set) and are guarded against accidentally
+targeting Neon.
+
+## Production deployment (Render + Neon + Cloudflare R2)
+
+### Environment variables
+
+All variables are documented with placeholder values in `.env.example`
+(backend) and `frontend/.env.example`. Nothing here is a real secret - fill
+these in via Render's dashboard, never commit a filled-in `.env`.
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Neon **pooled** connection string - used by the running app |
+| `DIRECT_URL` | Neon **unpooled** connection string - used only for running migrations |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Token signing secrets (two, not one - there's no single `JWT_SECRET` in this app) |
+| `JWT_ACCESS_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | Token lifetimes, e.g. `15m` / `7d` |
+| `SITE_ORIGIN` | The deployed frontend's origin - restricts CORS to it in production |
+| `R2_ENDPOINT` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | Cloudflare R2 (S3-compatible) object storage for documents |
+| `RESEND_API_KEY` / `MAIL_FROM` | Daily expiry-alert digest emails (Resend) - leave `RESEND_API_KEY` empty to disable sending (nothing is marked as sent, so emails resume cleanly once set) |
+| `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` | Used once by `npm run db:seed:prod` to create the one production Super Admin |
+| `VITE_API_URL` (frontend) | The deployed API's base URL, e.g. `https://hrms-api.onrender.com/api` |
+
+### Migrations
+
+`npm run migrate` (`sequelize-cli db:migrate`) runs every migration in
+`migrations/` against `DIRECT_URL`. This is wired as part of `hrms-api`'s
+Render build command (see `render.yaml`), so every deploy applies any new
+migrations before the new code starts serving traffic. Migrations are
+written from the already-associated Sequelize models (`migrations/_helpers/fromModel.js`)
+so the schema has one source of truth, with defensive `describeTable()`
+checks wherever a later migration alters a column an earlier one might
+already have created correctly.
+
+### Cloudflare R2 bucket CORS
+
+The frontend uploads/downloads documents via pre-signed URLs issued by the
+API, but the browser still talks directly to R2 for the actual bytes - so
+the bucket needs a CORS policy allowing your frontend's origin. Apply this
+in the Cloudflare dashboard (R2 → your bucket → Settings → CORS Policy →
+Add CORS policy) or via `aws s3api put-bucket-cors` against the R2
+S3-compatible endpoint:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://hrms-web.onrender.com"],
+    "AllowedMethods": ["GET", "PUT"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Replace `AllowedOrigins` with your actual `SITE_ORIGIN` (add
+`http://localhost:5173` too if you also want local dev to upload directly
+against the same bucket).
+
+### Render entry checklist
+
+1. Push this repo to GitHub/GitLab and create a Render **Blueprint** from
+   `render.yaml` (or create the two services manually using it as a
+   reference).
+2. On `hrms-api`, fill in every `sync: false` env var in `render.yaml`
+   (Neon `DATABASE_URL`/`DIRECT_URL`, JWT secrets, R2 credentials, Resend
+   key, `SITE_ORIGIN`, `SUPERADMIN_EMAIL`/`SUPERADMIN_PASSWORD`).
+3. On `hrms-web`, set `VITE_API_URL` to `hrms-api`'s public URL + `/api`.
+4. Deploy `hrms-api` first - the build step runs migrations against Neon.
+5. Open a shell on `hrms-api` (Render dashboard → Shell) and run
+   `npm run db:seed:prod` **once** to create the single production Super
+   Admin. Re-running it later is harmless (idempotent `findOrCreate`).
+6. Apply the R2 bucket CORS policy above with your real `hrms-web` URL.
+7. Deploy `hrms-web`.
+8. Log in as the seeded Super Admin, change the password immediately, and
+   create the first real company/Employer Admin from there.
+9. Confirm the daily expiry-alert email job: it's scheduled automatically
+   inside `hrms-api` at 07:00 Europe/London once `RESEND_API_KEY` is set -
+   no extra Render cron job needed. `npm run alerts:email` runs it on
+   demand (e.g. via the Render shell) if you want to verify it immediately
+   rather than waiting for 07:00.
 
 ## Next
 
 Every module from the original spec is implemented, plus a React frontend
-(`frontend/`). Natural next steps if you want to keep going: a migrations
-system (see note above), automated tests (this project has caught real
-bugs - including the authorization issue above - only by live-testing;
-a test suite would catch them before they ship), and wiring `alerts:sync`
-to a real scheduler.
+(`frontend/`) and the production deployment path above (Neon migrations,
+Cloudflare R2 document storage, Render, daily expiry-alert emails).
+Automated tests are the main remaining gap - this project has caught real
+bugs (including the authorization issue above) only by live-testing; see
+`npm test` once the test suite lands for the specific regressions it's
+designed to catch.
