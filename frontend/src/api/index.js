@@ -47,7 +47,10 @@ export const rightToWorkApi = {
 export const documentsApi = {
   list: (params) => api.get('/documents', params),
   get: (id) => api.get(`/documents/${id}`),
-  upload: (data) => api.post('/documents', data),
+  getUploadUrl: (data) => api.post('/documents/upload-url', data),
+  create: (data) => api.post('/documents', data),
+  getViewUrl: (id) => api.get(`/documents/${id}/view-url`),
+  getDownloadUrl: (id) => api.get(`/documents/${id}/download-url`),
   update: (id, data) => api.patch(`/documents/${id}`, data),
 };
 

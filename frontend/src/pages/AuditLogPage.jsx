@@ -6,8 +6,8 @@ import { Loading, ErrorBanner } from '../components/Feedback';
 import DataTable from '../components/DataTable';
 import { ApiError } from '../api/client';
 
-const ENTITY_TYPES = ['Employee', 'RightToWorkCheck', 'Document', 'HolidayRequest', 'Absence', 'RolePermissionRestriction'];
-const ACTIONS = ['create', 'update', 'delete', 'status_change'];
+const ENTITY_TYPES = ['Employee', 'RightToWorkCheck', 'Document', 'HolidayRequest', 'Absence', 'RolePermissionRestriction', 'User', 'Company'];
+const ACTIONS = ['create', 'update', 'delete', 'status_change', 'upload', 'view', 'download'];
 
 export default function AuditLogPage() {
   const { user } = useAuth();

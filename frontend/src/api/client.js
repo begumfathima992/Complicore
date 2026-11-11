@@ -97,3 +97,21 @@ export const api = {
   delete: (path, params) => request(path, { method: 'DELETE', params }),
   download: (path, params) => request(path, { method: 'GET', params, blob: true }),
 };
+
+/**
+ * PUTs a file directly to a pre-signed storage URL (R2/S3) - deliberately
+ * NOT routed through request() above, since this targets a completely
+ * different host than our own API and must not carry our bearer token;
+ * the pre-signed URL itself is the only auth it needs.
+ */
+export async function uploadToPresignedUrl(uploadUrl, file, contentType) {
+  const res = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: file,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ApiError(`Upload to storage failed (${res.status})${text ? `: ${text}` : ''}`, res.status);
+  }
+}

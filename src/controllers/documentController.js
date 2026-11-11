@@ -3,6 +3,7 @@ const AppError = require('../utils/AppError');
 const { scopeToChildWhere, scopeToEmployeeWhereById } = require('../utils/scopeToWhere');
 const { syncDocumentAlerts } = require('../services/alertService');
 const { recordAudit, snapshotChanges, recordFieldChanges, actorContextFrom } = require('../services/auditService');
+const storageService = require('../services/storageService');
 
 const INCLUDE = [
   { model: Employee, attributes: ['id', 'firstName', 'lastName', 'employeeNumber'] },
@@ -27,15 +28,50 @@ async function getDocument(req, res) {
 }
 
 /**
- * Registers a document (metadata only - `fileUrl` points at the already
- * uploaded object, e.g. an S3 key from a pre-signed upload). If the
- * employee already has a current document of the same type, that one is
- * superseded rather than deleted: version is bumped and the old row is
- * kept for audit purposes with isCurrent=false.
+ * Step 1 of the upload flow: validates permission + employee scope +
+ * declared file type/size, pre-generates the document's id so the R2
+ * object key can embed it (company/{companyId}/employee/{employeeId}/
+ * {documentId}-v{version}.ext), and returns a short-lived pre-signed PUT.
+ * No DB row is created here - that happens in createDocument() once the
+ * client confirms the upload actually completed, so a client that never
+ * finishes the PUT never leaves a dangling "document" with no file.
  */
-async function uploadDocument(req, res) {
-  const { employeeId, documentType } = req.body;
-  if (!employeeId || !documentType) throw new AppError('employeeId and documentType are required', 400);
+async function getUploadUrl(req, res) {
+  const { employeeId, documentType, fileName, contentType, fileSizeBytes } = req.body;
+  if (!employeeId || !documentType || !contentType || !fileSizeBytes) {
+    throw new AppError('employeeId, documentType, contentType and fileSizeBytes are required', 400);
+  }
+
+  const employee = await Employee.findOne({ where: scopeToEmployeeWhereById(req.accessScope, employeeId) });
+  if (!employee) throw new AppError('Employee not found or not accessible', 404);
+
+  const previous = await Document.findOne({ where: { employeeId, documentType, isCurrent: true } });
+  const version = previous ? previous.version + 1 : 1;
+  const documentId = storageService.generateDocumentId();
+
+  const { uploadUrl, key, expiresInSeconds } = await storageService.createUploadUrl({
+    companyId: employee.companyId,
+    employeeId,
+    documentId,
+    version,
+    contentType,
+    fileSizeBytes,
+  });
+
+  res.json({ documentId, uploadUrl, key, version, expiresInSeconds, fileName });
+}
+
+/**
+ * Step 2: the client has PUT the file to R2 using the pre-signed URL from
+ * getUploadUrl() and now confirms it - creates the Document row with the
+ * SAME id/key/version computed above. Supersedes any previous current
+ * document of the same type, exactly as before.
+ */
+async function createDocument(req, res) {
+  const { documentId, employeeId, documentType, fileKey, fileName, version, expiryDate } = req.body;
+  if (!documentId || !employeeId || !documentType || !fileKey || !version) {
+    throw new AppError('documentId, employeeId, documentType, fileKey and version are required', 400);
+  }
 
   const employee = await Employee.findOne({ where: scopeToEmployeeWhereById(req.accessScope, employeeId) });
   if (!employee) throw new AppError('Employee not found or not accessible', 404);
@@ -44,21 +80,25 @@ async function uploadDocument(req, res) {
     where: { employeeId, documentType, isCurrent: true },
     order: [['version', 'DESC']],
   });
-
   if (previous) await previous.update({ isCurrent: false });
 
   const document = await Document.create({
-    ...req.body,
+    id: documentId,
+    employeeId,
+    documentType,
+    fileKey,
+    fileName,
+    expiryDate,
+    version,
     companyId: employee.companyId,
     uploadedByUserId: req.user.id,
-    version: previous ? previous.version + 1 : 1,
     isCurrent: true,
   });
 
   await recordAudit({
     entityType: 'Document',
     entityId: document.id,
-    action: 'create',
+    action: 'upload',
     fieldName: 'documentType',
     newValue: `${documentType} (v${document.version})`,
     employeeId,
@@ -68,6 +108,42 @@ async function uploadDocument(req, res) {
 
   const created = await Document.findByPk(document.id, { include: INCLUDE });
   res.status(201).json({ document: created });
+}
+
+async function getViewUrl(req, res) {
+  const where = { ...(await scopeToChildWhere(req.accessScope)), id: req.params.id };
+  const document = await Document.findOne({ where });
+  if (!document) throw new AppError('Document not found or not accessible', 404);
+
+  const { url, expiresInSeconds } = await storageService.createGetUrl({ key: document.fileKey, fileName: document.fileName, mode: 'inline' });
+
+  await recordAudit({
+    entityType: 'Document',
+    entityId: document.id,
+    action: 'view',
+    employeeId: document.employeeId,
+    ...actorContextFrom(req),
+  });
+
+  res.json({ url, expiresInSeconds });
+}
+
+async function getDownloadUrl(req, res) {
+  const where = { ...(await scopeToChildWhere(req.accessScope)), id: req.params.id };
+  const document = await Document.findOne({ where });
+  if (!document) throw new AppError('Document not found or not accessible', 404);
+
+  const { url, expiresInSeconds } = await storageService.createGetUrl({ key: document.fileKey, fileName: document.fileName, mode: 'attachment' });
+
+  await recordAudit({
+    entityType: 'Document',
+    entityId: document.id,
+    action: 'download',
+    employeeId: document.employeeId,
+    ...actorContextFrom(req),
+  });
+
+  res.json({ url, expiresInSeconds });
 }
 
 async function updateDocument(req, res) {
@@ -82,7 +158,7 @@ async function updateDocument(req, res) {
   if (!document) throw new AppError('Document not found or not accessible', 404);
 
   // Status/expiry edits only - re-uploading a new file goes through
-  // uploadDocument() so the old version is retained.
+  // getUploadUrl()/createDocument() so the old version is retained.
   const { status, expiryDate } = req.body;
   const updates = {
     ...(status !== undefined && { status }),
@@ -99,4 +175,12 @@ async function updateDocument(req, res) {
   res.json({ document });
 }
 
-module.exports = { listDocuments, getDocument, uploadDocument, updateDocument };
+module.exports = {
+  listDocuments,
+  getDocument,
+  getUploadUrl,
+  createDocument,
+  getViewUrl,
+  getDownloadUrl,
+  updateDocument,
+};
