@@ -1,0 +1,26 @@
+-- Production hardening for the audit log's tamper-resistance.
+--
+-- The app-layer hash chain (services/auditService.js) detects tampering no
+-- matter which DB role the app connects as. This script goes further and
+-- makes UPDATE/DELETE impossible for that role in the first place - but it
+-- only works if the application connects as a role that does NOT own the
+-- audit_logs table. In Postgres, a table's owner always bypasses REVOKE,
+-- so running this against the same superuser/owner role the app already
+-- uses (as is typical in local dev) is a no-op and will not visibly change
+-- anything - that's expected, not a bug in this script.
+--
+-- Recommended production setup:
+--   1. Run migrations/`db:sync` as an owner/admin role (e.g. `hrms_admin`).
+--   2. Create a separate, lower-privilege role for the running application
+--      (e.g. `hrms_app`) and GRANT it SELECT/INSERT on audit_logs only.
+--   3. Point DB_USER/DB_PASSWORD in .env at `hrms_app`, not the owner role.
+--
+-- Example (adjust role names to match your setup):
+--
+--   REVOKE UPDATE, DELETE ON audit_logs FROM hrms_app;
+--   GRANT SELECT, INSERT ON audit_logs TO hrms_app;
+--
+-- With that split in place, even a fully compromised application process
+-- cannot rewrite or erase audit history - only a separate, more tightly
+-- controlled admin role can, and doing so would still break the hash chain
+-- that verifyIntegrity() checks.
