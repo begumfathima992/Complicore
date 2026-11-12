@@ -1,6 +1,7 @@
 const app = require('./app');
 const { sequelize } = require('./models');
 const { scheduleExpiryAlertEmails } = require('./jobs/expiryAlertCron');
+const { scheduleActivateDueChanges } = require('./jobs/scheduledChangesCron');
 
 const PORT = process.env.PORT || 4000;
 
@@ -8,6 +9,7 @@ async function start() {
   await sequelize.authenticate();
   console.log('Database connection established.');
 
+  scheduleActivateDueChanges();
   scheduleExpiryAlertEmails();
 
   app.listen(PORT, () => {

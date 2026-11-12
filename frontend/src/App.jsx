@@ -10,6 +10,8 @@ import RightToWorkPage from './pages/RightToWorkPage';
 import DocumentsPage from './pages/DocumentsPage';
 import ChangeOfCircumstancesPage from './pages/ChangeOfCircumstancesPage';
 import RosterPage from './pages/RosterPage';
+import AttendancePage from './pages/AttendancePage';
+import ImportPage from './pages/ImportPage';
 import HolidayPage from './pages/HolidayPage';
 import AbsencePage from './pages/AbsencePage';
 import AlertsPage from './pages/AlertsPage';
@@ -40,6 +42,8 @@ export default function App() {
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/change-of-circumstances" element={<ChangeOfCircumstancesPage />} />
         <Route path="/roster" element={<RosterPage />} />
+        <Route path="/attendance" element={<AttendancePage />} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/holiday" element={<HolidayPage />} />
         <Route path="/absence" element={<AbsencePage />} />
         <Route path="/alerts" element={<AlertsPage />} />

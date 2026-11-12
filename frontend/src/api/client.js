@@ -148,6 +148,33 @@ export const api = {
  * different host than our own API and must not carry our bearer token;
  * the pre-signed URL itself is the only auth it needs.
  */
+/**
+ * POSTs a multipart form (one file + the target sheet name) straight to
+ * our own API - deliberately bypasses request() above since that only
+ * ever sends JSON bodies; the backend's multer middleware (see
+ * routes/importRoutes.js) expects multipart/form-data instead.
+ */
+export async function uploadImportFile(path, sheet, file, companyId) {
+  const form = new FormData();
+  form.append('sheet', sheet);
+  form.append('file', file);
+  if (companyId) form.append('companyId', companyId);
+
+  const res = await fetch(new URL(BASE_URL.replace(/\/$/, '') + path), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: form,
+  });
+
+  const contentType = res.headers.get('content-type') || '';
+  const data = contentType.includes('application/json') ? await res.json().catch(() => null) : null;
+
+  if (!res.ok) {
+    throw new ApiError((data && data.error) || `Import request failed (${res.status})`, res.status, data);
+  }
+  return data;
+}
+
 export async function uploadToPresignedUrl(uploadUrl, file, contentType) {
   const res = await fetch(uploadUrl, {
     method: 'PUT',

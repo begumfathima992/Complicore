@@ -4,16 +4,10 @@ const { scopeToChildWhere, scopeToEmployeeWhereById } = require('../utils/scopeT
 const { syncRightToWorkAlerts } = require('../services/alertService');
 const { recordAudit, snapshotChanges, recordFieldChanges, actorContextFrom } = require('../services/auditService');
 
-const IMMIGRATION_DETAIL_FIELDS = [
-  'nationality',
-  'rightToWorkStatus',
-  'visaType',
-  'visaExpiry',
-  'shareCode',
-  'sponsorshipReference',
-  'complianceStatus',
-  'settlementStatus',
-];
+// visaType/visaExpiry/shareCode/sponsorshipReference moved to VisaRecord
+// (see controllers/visaRecordController.js) - ImmigrationDetail now only
+// holds the fields below.
+const IMMIGRATION_DETAIL_FIELDS = ['nationality', 'rightToWorkStatus', 'complianceStatus', 'settlementStatus'];
 
 const INCLUDE = [
   { model: Employee, attributes: ['id', 'firstName', 'lastName', 'employeeNumber'] },

@@ -17,7 +17,7 @@ export function StatusBadge({ status }) {
   // for pending, red for negative terminal states, grey otherwise.
   const positive = ['active', 'approved', 'verified', 'valid', 'resolved', 'published', 'closed'];
   const negative = ['terminated', 'rejected', 'expired', 'critical', 'cancelled', 'not_verified'];
-  const pending = ['pending', 'pending_manager', 'pending_hr', 'pending_review', 'expiring_soon', 'open', 'draft'];
+  const pending = ['pending', 'pending_manager', 'pending_hr', 'pending_review', 'expiring_soon', 'open', 'draft', 'starting_soon'];
 
   let cls = 'badge-default';
   if (positive.includes(status)) cls = 'badge-low';

@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, uploadImportFile } from './client';
 
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
@@ -119,6 +119,35 @@ export const auditApi = {
   list: (params) => api.get('/audit-logs', params),
   get: (id) => api.get(`/audit-logs/${id}`),
   verify: () => api.get('/audit-logs/verify'),
+};
+
+export const attendanceApi = {
+  list: (params) => api.get('/attendance', params),
+  weekly: (employeeId, weekStart) => api.get('/attendance/weekly', { employeeId, weekStart }),
+  upsert: (data) => api.post('/attendance', data),
+  approve: (id) => api.patch(`/attendance/${id}/approve`, {}),
+  exportFile: (params, format) => api.download('/attendance/export', { ...params, format }),
+};
+
+export const contractHistoryApi = {
+  list: (employeeId) => api.get(`/employees/${employeeId}/contract-history`),
+  create: (employeeId, data) => api.post(`/employees/${employeeId}/contract-history`, data),
+};
+
+export const visaRecordsApi = {
+  list: (employeeId) => api.get(`/right-to-work-checks/visa-records/${employeeId}`),
+  create: (employeeId, data) => api.post(`/right-to-work-checks/visa-records/${employeeId}`, data),
+};
+
+export const identityDocumentsApi = {
+  list: (employeeId) => api.get(`/right-to-work-checks/identity-documents/${employeeId}`),
+  create: (employeeId, data) => api.post(`/right-to-work-checks/identity-documents/${employeeId}`, data),
+};
+
+export const importApi = {
+  template: () => api.download('/import/template'),
+  preview: (sheet, file, companyId) => uploadImportFile('/import/preview', sheet, file, companyId),
+  commit: (sheet, file, companyId) => uploadImportFile('/import/commit', sheet, file, companyId),
 };
 
 export const emergencyContactsApi = {

@@ -18,6 +18,10 @@ const Absence = require('./Absence');
 const RolePermissionRestriction = require('./RolePermissionRestriction');
 const AuditLog = require('./AuditLog');
 const SentExpiryAlert = require('./SentExpiryAlert');
+const AttendanceRecord = require('./AttendanceRecord');
+const EmployeeContractHistory = require('./EmployeeContractHistory');
+const VisaRecord = require('./VisaRecord');
+const IdentityDocument = require('./IdentityDocument');
 
 // --- Company (tenant) scoping -------------------------------------------
 Company.hasMany(Department, { foreignKey: 'companyId' });
@@ -61,6 +65,18 @@ AuditLog.belongsTo(Company, { foreignKey: 'companyId' });
 
 Company.hasMany(EmergencyContact, { foreignKey: 'companyId' });
 EmergencyContact.belongsTo(Company, { foreignKey: 'companyId' });
+
+Company.hasMany(AttendanceRecord, { foreignKey: 'companyId' });
+AttendanceRecord.belongsTo(Company, { foreignKey: 'companyId' });
+
+Company.hasMany(EmployeeContractHistory, { foreignKey: 'companyId' });
+EmployeeContractHistory.belongsTo(Company, { foreignKey: 'companyId' });
+
+Company.hasMany(VisaRecord, { foreignKey: 'companyId' });
+VisaRecord.belongsTo(Company, { foreignKey: 'companyId' });
+
+Company.hasMany(IdentityDocument, { foreignKey: 'companyId' });
+IdentityDocument.belongsTo(Company, { foreignKey: 'companyId' });
 
 // --- Employee structure ---------------------------------------------------
 Department.hasMany(Employee, { foreignKey: 'departmentId' });
@@ -136,6 +152,33 @@ Absence.belongsTo(Employee, { foreignKey: 'employeeId' });
 Absence.belongsTo(Document, { as: 'evidence', foreignKey: 'evidenceDocumentId' });
 Absence.belongsTo(User, { as: 'approvedBy', foreignKey: 'approvedByUserId' });
 
+// --- Attendance -----------------------------------------------------------
+Employee.hasMany(AttendanceRecord, { foreignKey: 'employeeId', onDelete: 'CASCADE' });
+AttendanceRecord.belongsTo(Employee, { foreignKey: 'employeeId' });
+
+AttendanceRecord.belongsTo(User, { as: 'createdBy', foreignKey: 'createdByUserId' });
+AttendanceRecord.belongsTo(User, { as: 'approvedBy', foreignKey: 'approvedByUserId' });
+
+// --- Contract history -------------------------------------------------------
+Employee.hasMany(EmployeeContractHistory, { foreignKey: 'employeeId', onDelete: 'CASCADE' });
+EmployeeContractHistory.belongsTo(Employee, { foreignKey: 'employeeId' });
+
+EmployeeContractHistory.belongsTo(User, { as: 'createdBy', foreignKey: 'createdByUserId' });
+
+// --- Visa history -------------------------------------------------------------
+Employee.hasMany(VisaRecord, { foreignKey: 'employeeId', onDelete: 'CASCADE' });
+VisaRecord.belongsTo(Employee, { foreignKey: 'employeeId' });
+
+VisaRecord.belongsTo(Document, { foreignKey: 'documentId' });
+VisaRecord.belongsTo(User, { as: 'createdBy', foreignKey: 'createdByUserId' });
+
+// --- Identity documents (passports / national ID / BRP) -----------------------
+Employee.hasMany(IdentityDocument, { foreignKey: 'employeeId', onDelete: 'CASCADE' });
+IdentityDocument.belongsTo(Employee, { foreignKey: 'employeeId' });
+
+IdentityDocument.belongsTo(Document, { foreignKey: 'documentId' });
+IdentityDocument.belongsTo(User, { as: 'createdBy', foreignKey: 'createdByUserId' });
+
 // --- Audit log ----------------------------------------------------------------
 Employee.hasMany(AuditLog, { foreignKey: 'employeeId' });
 AuditLog.belongsTo(Employee, { foreignKey: 'employeeId' });
@@ -175,4 +218,8 @@ module.exports = {
   RolePermissionRestriction,
   AuditLog,
   SentExpiryAlert,
+  AttendanceRecord,
+  EmployeeContractHistory,
+  VisaRecord,
+  IdentityDocument,
 };

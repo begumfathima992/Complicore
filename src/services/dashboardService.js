@@ -12,7 +12,12 @@ const { REQUIRED_DOCUMENT_TYPES } = require('./alertService');
  */
 async function getComplianceOverview(accessScope) {
   const employeeWhere = scopeToEmployeeWhere(accessScope);
-  const employees = await Employee.findAll({ where: { ...employeeWhere, employmentStatus: 'active' } });
+  const today = new Date().toISOString().slice(0, 10);
+  // Excludes future-dated new starters ("starting soon") from active
+  // headcount - see Employee.prototype.effectiveStatus().
+  const employees = await Employee.findAll({
+    where: { ...employeeWhere, employmentStatus: 'active', startDate: { [Op.or]: [null, { [Op.lte]: today }] } },
+  });
   const employeeIds = employees.map((e) => e.id);
   const totalEmployees = employees.length;
 

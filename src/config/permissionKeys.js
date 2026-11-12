@@ -67,6 +67,14 @@ const KEY_MAP = {
   'users:create': 'users.create',
   'users:update': 'users.manage',
   'users:delete': 'users.deactivate',
+
+  'attendance:read': 'attendance.view',
+  'attendance:create': 'attendance.request',
+  'attendance:approve': 'attendance.approve',
+  'attendance:update': 'attendance.manage',
+
+  'import:read': 'import.view',
+  'import:create': 'import.run',
 };
 
 /** All granular keys that exist, for validating restriction requests. */

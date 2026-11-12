@@ -10,6 +10,8 @@ const {
   Absence,
   Shift,
   User,
+  VisaRecord,
+  AttendanceRecord,
 } = require('../models');
 const { scopeToEmployeeWhere, scopeToChildWhere } = require('../utils/scopeToWhere');
 const { REQUIRED_DOCUMENT_TYPES } = require('./alertService');
@@ -224,8 +226,9 @@ async function documentExpiryReport(scope, filters, { expired }) {
 
 async function missingDocumentsReport(scope, filters) {
   const employeeWhere = applyCommonEmployeeFilters(scopeToEmployeeWhere(scope), filters);
+  const today = new Date().toISOString().slice(0, 10);
   const employees = await Employee.findAll({
-    where: { ...employeeWhere, employmentStatus: 'active' },
+    where: { ...employeeWhere, employmentStatus: 'active', startDate: { [Op.or]: [null, { [Op.lte]: today }] } },
     include: [{ model: Document, where: { isCurrent: true }, required: false, attributes: ['documentType'] }],
   });
 
@@ -247,9 +250,19 @@ async function missingDocumentsReport(scope, filters) {
   };
 }
 
+/**
+ * Visa type/expiry/share code now come from the current (isCurrent:true)
+ * VisaRecord rather than ImmigrationDetail directly - see the migration
+ * that moved them there. `shareCode` is masked server-side for non-HR+
+ * roles by runReport() in controllers/reportController.js, same as it is
+ * everywhere else this field appears.
+ */
 async function visaMonitoringReport(scope, filters) {
   const employeeWhere = applyCommonEmployeeFilters(scopeToEmployeeWhere(scope), filters);
-  const employees = await Employee.findAll({ where: employeeWhere, include: [ImmigrationDetail] });
+  const employees = await Employee.findAll({
+    where: employeeWhere,
+    include: [ImmigrationDetail, { model: VisaRecord, where: { isCurrent: true }, required: true }],
+  });
 
   return {
     columns: [
@@ -262,15 +275,15 @@ async function visaMonitoringReport(scope, filters) {
       { key: 'complianceStatus', label: 'Compliance Status' },
     ],
     rows: employees
-      .filter((e) => e.ImmigrationDetail?.visaExpiry)
+      .filter((e) => e.VisaRecords?.[0]?.expiryDate)
       .map((e) => ({
         employeeNumber: e.employeeNumber,
         name: fullName(e),
-        visaType: e.ImmigrationDetail.visaType,
-        visaExpiry: e.ImmigrationDetail.visaExpiry,
-        shareCode: e.ImmigrationDetail.shareCode,
-        settlementStatus: e.ImmigrationDetail.settlementStatus,
-        complianceStatus: e.ImmigrationDetail.complianceStatus,
+        visaType: e.VisaRecords[0].visaType,
+        visaExpiry: e.VisaRecords[0].expiryDate,
+        shareCode: e.VisaRecords[0].shareCode,
+        settlementStatus: e.ImmigrationDetail?.settlementStatus,
+        complianceStatus: e.ImmigrationDetail?.complianceStatus,
       })),
   };
 }
@@ -495,6 +508,57 @@ async function overtimeReport(scope, filters) {
   };
 }
 
+/** Planned (Shift) vs actual (AttendanceRecord) hours per employee per week - only meaningful for fully-past weeks; current/future weeks simply show 0 actual hours so far. */
+async function attendanceVsRosterReport(scope, filters) {
+  const weekKey = (date) => {
+    const d = new Date(date);
+    const day = (d.getUTCDay() + 6) % 7; // Monday = 0
+    d.setUTCDate(d.getUTCDate() - day);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const totals = new Map(); // `${employeeId}:${weekStart}` -> { employee, weekStarting, plannedHours, actualHours }
+  const getEntry = (employeeId, employee, weekStarting) => {
+    const key = `${employeeId}:${weekStarting}`;
+    if (!totals.has(key)) totals.set(key, { employee, weekStarting, plannedHours: 0, actualHours: 0 });
+    return totals.get(key);
+  };
+
+  const shiftWhere = applyDateRange(await scopeToChildWhere(scope), 'shiftDate', filters);
+  if (filters.employeeId) shiftWhere.employeeId = filters.employeeId;
+  const shifts = await Shift.findAll({ where: shiftWhere, include: [{ model: Employee, attributes: ['employeeNumber', 'firstName', 'lastName'] }] });
+  for (const s of shifts) {
+    const hours = (new Date(s.endsAt) - new Date(s.startsAt)) / (1000 * 60 * 60);
+    getEntry(s.employeeId, s.Employee, weekKey(s.shiftDate)).plannedHours += hours;
+  }
+
+  const attendanceWhere = applyDateRange(await scopeToChildWhere(scope), 'date', filters);
+  if (filters.employeeId) attendanceWhere.employeeId = filters.employeeId;
+  const records = await AttendanceRecord.findAll({ where: attendanceWhere, include: [{ model: Employee, attributes: ['employeeNumber', 'firstName', 'lastName'] }] });
+  for (const r of records) {
+    getEntry(r.employeeId, r.Employee, weekKey(r.date)).actualHours += Number(r.totalHours || 0);
+  }
+
+  return {
+    columns: [
+      { key: 'employeeNumber', label: 'Employee #' },
+      { key: 'name', label: 'Name' },
+      { key: 'weekStarting', label: 'Week Starting' },
+      { key: 'plannedHours', label: 'Planned Hours' },
+      { key: 'actualHours', label: 'Actual Hours' },
+      { key: 'varianceHours', label: 'Variance (actual - planned)' },
+    ],
+    rows: [...totals.values()].map((t) => ({
+      employeeNumber: t.employee?.employeeNumber,
+      name: t.employee ? fullName(t.employee) : undefined,
+      weekStarting: t.weekStarting,
+      plannedHours: Math.round(t.plannedHours * 10) / 10,
+      actualHours: Math.round(t.actualHours * 10) / 10,
+      varianceHours: Math.round((t.actualHours - t.plannedHours) * 10) / 10,
+    })),
+  };
+}
+
 async function turnoverReport(scope, filters) {
   const baseWhere = scopeToEmployeeWhere(scope);
   if (filters.departmentId) baseWhere.departmentId = filters.departmentId;
@@ -506,7 +570,10 @@ async function turnoverReport(scope, filters) {
   const terminations = await Employee.count({
     where: { ...baseWhere, employmentStatus: 'terminated', terminationDate: { [Op.between]: [from, to] } },
   });
-  const headcountEnd = await Employee.count({ where: { ...baseWhere, employmentStatus: 'active' } });
+  // Excludes future-dated new starters ("starting soon") from active headcount.
+  const headcountEnd = await Employee.count({
+    where: { ...baseWhere, employmentStatus: 'active', startDate: { [Op.or]: [null, { [Op.lte]: to }] } },
+  });
   const headcountStart = Math.max(headcountEnd - hires + terminations, 0);
   const avgHeadcount = (headcountStart + headcountEnd) / 2 || 1;
   const turnoverRatePercent = Math.round((terminations / avgHeadcount) * 1000) / 10;
@@ -591,6 +658,7 @@ const REPORTS = {
   sickness: { label: 'Sickness Report', category: 'hr', generate: sicknessReport },
   absence: { label: 'Absence Report', category: 'hr', generate: absenceReport },
   overtime: { label: 'Overtime Report', category: 'hr', generate: overtimeReport },
+  attendance_vs_roster: { label: 'Attendance vs Roster', category: 'hr', generate: attendanceVsRosterReport },
   roster: { label: 'Roster Report', category: 'hr', generate: rosterReport },
   turnover: { label: 'Employee Turnover', category: 'hr', generate: turnoverReport },
   training: { label: 'Training Report', category: 'hr', generate: trainingReport },

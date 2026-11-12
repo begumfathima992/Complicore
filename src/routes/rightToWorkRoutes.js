@@ -10,6 +10,8 @@ const {
   getImmigrationDetail,
   upsertImmigrationDetail,
 } = require('../controllers/rightToWorkController');
+const { listRecords: listVisaRecords, createRecord: createVisaRecord } = require('../controllers/visaRecordController');
+const { listDocuments: listIdentityDocuments, createDocument: createIdentityDocument } = require('../controllers/identityDocumentController');
 
 const router = express.Router();
 
@@ -20,6 +22,15 @@ router.use(authenticate);
 // this module (Manager: view-only, HR/Employer/Super: can edit).
 router.get('/immigration-detail/:employeeId', authorize(FEATURES.RIGHT_TO_WORK, 'read'), getImmigrationDetail);
 router.patch('/immigration-detail/:employeeId', authorize(FEATURES.RIGHT_TO_WORK, 'update'), upsertImmigrationDetail);
+
+// Full past/current/future visa history - replaces the single visaType/
+// visaExpiry/shareCode fields that used to live inline on ImmigrationDetail.
+router.get('/visa-records/:employeeId', authorize(FEATURES.RIGHT_TO_WORK, 'read'), listVisaRecords);
+router.post('/visa-records/:employeeId', authorize(FEATURES.RIGHT_TO_WORK, 'create'), createVisaRecord);
+
+// Passport / national ID / BRP history.
+router.get('/identity-documents/:employeeId', authorize(FEATURES.RIGHT_TO_WORK, 'read'), listIdentityDocuments);
+router.post('/identity-documents/:employeeId', authorize(FEATURES.RIGHT_TO_WORK, 'create'), createIdentityDocument);
 
 router.get('/', authorize(FEATURES.RIGHT_TO_WORK, 'read'), listChecks);
 router.get('/:id', authorize(FEATURES.RIGHT_TO_WORK, 'read'), getCheck);

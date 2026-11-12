@@ -17,3 +17,6 @@ process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 // Never hit the real Resend API from a test run - tests that need to
 // observe "an email was sent" inject their own sendEmailFn instead.
 process.env.RESEND_API_KEY = '';
+// Dummy 32-byte key for utils/fieldEncryption.js (VisaRecord.shareCode,
+// IdentityDocument.documentNumber) - never the real production key.
+process.env.FIELD_ENCRYPTION_KEY = process.env.FIELD_ENCRYPTION_KEY || '0'.repeat(64);

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { rightToWorkApi } from '../api';
+import { rightToWorkApi, visaRecordsApi, identityDocumentsApi } from '../api';
 import { ApiError } from '../api/client';
 import { ErrorBanner, SuccessBanner, Loading } from './Feedback';
+import { StatusBadge } from './Badges';
 import EmployeePicker from './EmployeePicker';
+import HistoryRecordCard from './HistoryRecordCard';
+import { useApiData } from '../hooks/useApiData';
 
 const RIGHT_TO_WORK_STATUSES = ['verified', 'pending', 'expired', 'not_required'];
 const COMPLIANCE_STATUSES = ['compliant', 'action_required', 'non_compliant'];
@@ -14,21 +17,21 @@ const SETTLEMENT_STATUSES = ['not_applicable', 'settled', 'pre_settled'];
 const EMPTY = {
   nationality: '',
   rightToWorkStatus: 'pending',
-  visaType: '',
-  visaExpiry: '',
-  shareCode: '',
-  sponsorshipReference: '',
   complianceStatus: 'compliant',
   settlementStatus: 'not_applicable',
 };
 
+const EMPTY_VISA_FORM = { visaType: '', shareCode: '', startDate: '', expiryDate: '', sponsorshipReference: '', supersedesCurrent: true };
+const EMPTY_PASSPORT_FORM = { type: 'passport', documentNumber: '', issuingCountry: '', nationality: '', issueDate: '', expiryDate: '', supersedesCurrent: true };
+
 /**
- * View/edit the employee's ImmigrationDetail record (nationality, visa,
- * right-to-work status, EU Settlement Scheme status). Lives on the
- * Right-to-Work page rather than the general Employee edit form because it
- * is gated by RIGHT_TO_WORK permission (Manager: view-only, HR/Employer/
- * Super: can edit) - a different, stricter gate than the EMPLOYEES
- * permission the rest of the employee profile uses.
+ * View/edit the employee's ImmigrationDetail record (nationality,
+ * right-to-work status, EU Settlement Scheme status) plus the full
+ * past/current/future visa and passport/identity-document histories.
+ * Lives on the Right-to-Work page rather than the general Employee edit
+ * form because it is gated by RIGHT_TO_WORK permission (Manager:
+ * view-only, HR/Employer/Super: can edit) - a different, stricter gate
+ * than the EMPLOYEES permission the rest of the employee profile uses.
  */
 export default function ImmigrationDetailEditor({ canEdit }) {
   const [employeeId, setEmployeeId] = useState('');
@@ -54,6 +57,20 @@ export default function ImmigrationDetailEditor({ canEdit }) {
       .finally(() => setLoading(false));
   }, [employeeId]);
 
+  const {
+    data: visaData,
+    loading: visaLoading,
+    error: visaError,
+    reload: reloadVisas,
+  } = useApiData(() => (employeeId ? visaRecordsApi.list(employeeId) : Promise.resolve(null)), [employeeId]);
+
+  const {
+    data: passportData,
+    loading: passportLoading,
+    error: passportError,
+    reload: reloadPassports,
+  } = useApiData(() => (employeeId ? identityDocumentsApi.list(employeeId) : Promise.resolve(null)), [employeeId]);
+
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = async (e) => {
@@ -72,9 +89,26 @@ export default function ImmigrationDetailEditor({ canEdit }) {
     }
   };
 
+  const visaColumns = [
+    { key: 'visaType', label: 'Visa Type' },
+    { key: 'shareCode', label: 'Share Code', render: (r) => r.shareCode || '—' },
+    { key: 'startDate', label: 'Start' },
+    { key: 'expiryDate', label: 'Expiry' },
+    { key: 'isCurrent', label: 'Current?', render: (r) => (r.isCurrent ? <StatusBadge status="active" /> : r.supersedesCurrent ? <StatusBadge status="pending" /> : '—') },
+  ];
+
+  const passportColumns = [
+    { key: 'type', label: 'Type' },
+    { key: 'documentNumber', label: 'Number', render: (r) => r.documentNumber || '—' },
+    { key: 'issuingCountry', label: 'Issuing Country' },
+    { key: 'issueDate', label: 'Issue Date' },
+    { key: 'expiryDate', label: 'Expiry' },
+    { key: 'isCurrent', label: 'Current?', render: (r) => (r.isCurrent ? <StatusBadge status="active" /> : r.supersedesCurrent ? <StatusBadge status="pending" /> : '—') },
+  ];
+
   return (
     <div className="card">
-      <h2>Compliance record (nationality, visa, EU Settlement Scheme status)</h2>
+      <h2>Compliance record (nationality, right-to-work status, EU Settlement Scheme status)</h2>
       <div className="form-grid" style={{ marginBottom: 14 }}>
         <EmployeePicker value={employeeId} onChange={setEmployeeId} required={false} label="View/edit record for" />
       </div>
@@ -101,26 +135,6 @@ export default function ImmigrationDetailEditor({ canEdit }) {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label>Visa type</label>
-              <input value={form.visaType || ''} disabled={!canEdit} onChange={(e) => setField('visaType', e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Visa expiry</label>
-              <input type="date" value={form.visaExpiry || ''} disabled={!canEdit} onChange={(e) => setField('visaExpiry', e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Share code</label>
-              <input value={form.shareCode || ''} disabled={!canEdit} onChange={(e) => setField('shareCode', e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Sponsorship reference</label>
-              <input
-                value={form.sponsorshipReference || ''}
-                disabled={!canEdit}
-                onChange={(e) => setField('sponsorshipReference', e.target.value)}
-              />
             </div>
             <div className="field">
               <label>Compliance status</label>
@@ -151,6 +165,59 @@ export default function ImmigrationDetailEditor({ canEdit }) {
             </div>
           )}
         </form>
+      )}
+
+      {employeeId && !loading && !loadError && (
+        <>
+          <HistoryRecordCard
+            title="Visa history"
+            hint="Past visas are kept as history. A new visa with a future start date stays scheduled until that date arrives, when it automatically becomes current and closes the old one's alerts."
+            records={visaData?.records}
+            loading={visaLoading}
+            error={visaError}
+            columns={visaColumns}
+            canEdit={canEdit}
+            emptyForm={EMPTY_VISA_FORM}
+            submitLabel="Add visa record"
+            formFields={[
+              { key: 'visaType', label: 'Visa type' },
+              { key: 'shareCode', label: 'Share code (eVisa)', placeholder: 'e.g. W12-345-678' },
+              { key: 'startDate', label: 'Start date', type: 'date' },
+              { key: 'expiryDate', label: 'Expiry date', type: 'date' },
+              { key: 'sponsorshipReference', label: 'Sponsorship / CoS reference' },
+              { key: 'supersedesCurrent', label: 'Replaces the current visa?', type: 'checkbox' },
+            ]}
+            onSubmit={async (values) => {
+              await visaRecordsApi.create(employeeId, values);
+              reloadVisas();
+            }}
+          />
+
+          <HistoryRecordCard
+            title="Passport / identity document history"
+            hint="An employee can hold more than one (dual nationality). Old documents are kept as history. A renewal with a future issue date stays scheduled until that date arrives."
+            records={passportData?.documents}
+            loading={passportLoading}
+            error={passportError}
+            columns={passportColumns}
+            canEdit={canEdit}
+            emptyForm={EMPTY_PASSPORT_FORM}
+            submitLabel="Add passport / ID record"
+            formFields={[
+              { key: 'type', label: 'Type (passport/national_id/brp)' },
+              { key: 'documentNumber', label: 'Document number' },
+              { key: 'issuingCountry', label: 'Issuing country' },
+              { key: 'nationality', label: 'Nationality on document' },
+              { key: 'issueDate', label: 'Issue date', type: 'date' },
+              { key: 'expiryDate', label: 'Expiry date', type: 'date' },
+              { key: 'supersedesCurrent', label: 'Replaces the current one?', type: 'checkbox' },
+            ]}
+            onSubmit={async (values) => {
+              await identityDocumentsApi.create(employeeId, values);
+              reloadPassports();
+            }}
+          />
+        </>
       )}
     </div>
   );

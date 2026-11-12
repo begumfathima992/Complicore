@@ -65,6 +65,8 @@ const FEATURES = Object.freeze({
   EMERGENCY_CONTACTS: 'emergency_contacts',
   COMPANIES: 'companies',
   USERS: 'users',
+  ATTENDANCE: 'attendance',
+  IMPORT: 'import',
 });
 
 const { FULL, LIMITED, VIEW, OWN, SELF_MANAGE, APPROVE, REQUEST, SELF_FULL, NONE } = ACCESS_LEVELS;
@@ -143,6 +145,17 @@ const PERMISSIONS = {
   // anyone at or above their own seniority (an EMPLOYER_ADMIN account, or
   // another HR_MANAGER's), so this isn't a privilege-escalation risk.
   [FEATURES.USERS]: {
+    SUPER_ADMIN: FULL, EMPLOYER_ADMIN: FULL, HR_MANAGER: FULL, MANAGER: NONE, EMPLOYEE: NONE,
+  },
+  // Attendance (actual hours worked - distinct from DUTY_ROSTER's planned
+  // shifts). Shaped like HOLIDAY/SICK_LEAVE: Manager approves/views their
+  // team's entries, Employee can only submit/view their own.
+  [FEATURES.ATTENDANCE]: {
+    SUPER_ADMIN: FULL, EMPLOYER_ADMIN: FULL, HR_MANAGER: FULL, MANAGER: APPROVE, EMPLOYEE: REQUEST,
+  },
+  // Bulk CSV/Excel import - an inherently company-wide admin action, so no
+  // Manager/Employee access, same shape as USERS.
+  [FEATURES.IMPORT]: {
     SUPER_ADMIN: FULL, EMPLOYER_ADMIN: FULL, HR_MANAGER: FULL, MANAGER: NONE, EMPLOYEE: NONE,
   },
 };

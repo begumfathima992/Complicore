@@ -6,6 +6,8 @@ const {
   Alert,
   HolidayRequest,
   Absence,
+  VisaRecord,
+  IdentityDocument,
 } = require('../models');
 
 // Absence-threshold trigger: N or more absence periods within a rolling window.
@@ -107,6 +109,66 @@ async function syncRightToWorkAlerts() {
         title: `Right-to-work document ${daysPhrase(days)}`,
         message: buildMessage(`${check.Employee.firstName} ${check.Employee.lastName}'s right-to-work permission`, days),
         actionRequired: 'Review required',
+        assignedToRoleKey: 'HR_MANAGER',
+      })
+    );
+  }
+  return results.filter(Boolean);
+}
+
+/** Current (isCurrent:true) visa_records drive this, separately from any uploaded 'visa' Document's own expiry below. */
+async function syncVisaRecordAlerts() {
+  const records = await VisaRecord.findAll({
+    where: { isCurrent: true, expiryDate: { [Op.ne]: null } },
+    include: [{ model: Employee, where: { employmentStatus: 'active' }, attributes: ['id', 'companyId', 'firstName', 'lastName'] }],
+  });
+
+  const results = [];
+  for (const record of records) {
+    const days = daysUntil(record.expiryDate);
+    const severity = classifyByDays(days, { mediumDays: 90, highDays: 30 });
+    results.push(
+      await upsertAlert({
+        alertType: 'visa_expiry',
+        sourceType: 'VisaRecord',
+        sourceId: record.id,
+        employeeId: record.employeeId,
+        companyId: record.Employee.companyId,
+        severity,
+        dueDate: record.expiryDate,
+        title: `${record.Employee.firstName} ${record.Employee.lastName}'s visa ${daysPhrase(days)}`,
+        message: buildMessage(`Visa (${record.visaType || 'unspecified type'})`, days),
+        actionRequired: 'Review required',
+        assignedToRoleKey: 'HR_MANAGER',
+      })
+    );
+  }
+  return results.filter(Boolean);
+}
+
+/** Current (isCurrent:true) identity_documents (passports/national ID/BRP) drive this. */
+async function syncIdentityDocumentAlerts() {
+  const documents = await IdentityDocument.findAll({
+    where: { isCurrent: true, expiryDate: { [Op.ne]: null } },
+    include: [{ model: Employee, where: { employmentStatus: 'active' }, attributes: ['id', 'companyId', 'firstName', 'lastName'] }],
+  });
+
+  const results = [];
+  for (const doc of documents) {
+    const days = daysUntil(doc.expiryDate);
+    const severity = classifyByDays(days, { mediumDays: 90, highDays: 30 });
+    results.push(
+      await upsertAlert({
+        alertType: 'passport_expiry',
+        sourceType: 'IdentityDocument',
+        sourceId: doc.id,
+        employeeId: doc.employeeId,
+        companyId: doc.Employee.companyId,
+        severity,
+        dueDate: doc.expiryDate,
+        title: `${doc.Employee.firstName} ${doc.Employee.lastName}'s ${doc.type.replace(/_/g, ' ')} ${daysPhrase(days)}`,
+        message: buildMessage(doc.type.replace(/_/g, ' '), days),
+        actionRequired: 'Review and renew document',
         assignedToRoleKey: 'HR_MANAGER',
       })
     );
@@ -322,12 +384,14 @@ async function createComplianceTaskAlert({ companyId, employeeId, severity, titl
 }
 
 async function syncAllAlerts() {
-  const [rtw, docs, missing, endings, absenceThreshold] = await Promise.all([
+  const [rtw, docs, missing, endings, absenceThreshold, visas, identityDocuments] = await Promise.all([
     syncRightToWorkAlerts(),
     syncDocumentAlerts(),
     syncMissingDocumentAlerts(),
     syncProbationAndContractAlerts(),
     syncAbsenceThresholdAlerts(),
+    syncVisaRecordAlerts(),
+    syncIdentityDocumentAlerts(),
   ]);
   return {
     rightToWork: rtw.length,
@@ -335,6 +399,8 @@ async function syncAllAlerts() {
     missingDocuments: missing.length,
     probationAndContract: endings.length,
     absenceThreshold: absenceThreshold.length,
+    visaRecords: visas.length,
+    identityDocuments: identityDocuments.length,
   };
 }
 
@@ -344,6 +410,8 @@ module.exports = {
   syncMissingDocumentAlerts,
   syncProbationAndContractAlerts,
   syncAbsenceThresholdAlerts,
+  syncVisaRecordAlerts,
+  syncIdentityDocumentAlerts,
   upsertHolidayRequestAlert,
   upsertSickLeaveAlert,
   createComplianceTaskAlert,

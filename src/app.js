@@ -20,6 +20,8 @@ const auditRoutes = require('./routes/auditRoutes');
 const emergencyContactRoutes = require('./routes/emergencyContactRoutes');
 const companyRoutes = require('./routes/companyRoutes');
 const userRoutes = require('./routes/userRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
+const importRoutes = require('./routes/importRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -52,6 +54,8 @@ app.use('/api/audit-logs', auditRoutes);
 app.use('/api/emergency-contacts', emergencyContactRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/import', importRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use(errorHandler);

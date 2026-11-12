@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApiData } from '../hooks/useApiData';
-import { employeesApi, emergencyContactsApi } from '../api';
+import { employeesApi, emergencyContactsApi, contractHistoryApi, visaRecordsApi, identityDocumentsApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { Loading, ErrorBanner, SuccessBanner } from '../components/Feedback';
 import { StatusBadge } from '../components/Badges';
 import DataTable from '../components/DataTable';
+import HistoryRecordCard from '../components/HistoryRecordCard';
 import { ApiError } from '../api/client';
 
 const EMPLOYMENT_STATUSES = ['active', 'on_leave', 'suspended', 'terminated'];
@@ -38,6 +39,19 @@ export default function EmployeeDetailPage() {
   const [editingContactId, setEditingContactId] = useState(null);
   const [editingContact, setEditingContact] = useState(null);
   const [contactActionError, setContactActionError] = useState(null);
+
+  const canEditContracts = ['SUPER_ADMIN', 'EMPLOYER_ADMIN', 'HR_MANAGER', 'MANAGER'].includes(user.role);
+  const {
+    data: contractData,
+    loading: contractLoading,
+    error: contractError,
+    reload: reloadContracts,
+  } = useApiData(() => contractHistoryApi.list(id), [id]);
+
+  const { data: visaData } = useApiData(() => visaRecordsApi.list(id), [id]);
+  const { data: passportData } = useApiData(() => identityDocumentsApi.list(id), [id]);
+  const currentVisa = visaData?.records?.find((r) => r.isCurrent);
+  const currentPassport = passportData?.documents?.find((d) => d.isCurrent);
 
   useEffect(() => {
     if (data?.employee) setForm({ ...data.employee });
@@ -237,6 +251,12 @@ export default function EmployeeDetailPage() {
           <p className="page-subtitle">
             {employee.employeeNumber} · {employee.jobTitle || 'No job title'} ·{' '}
             <StatusBadge status={employee.employmentStatus} />
+            {employee.effectiveStatus === 'starting_soon' && (
+              <>
+                {' '}
+                <StatusBadge status="starting_soon" /> <span className="muted">(starts {employee.startDate})</span>
+              </>
+            )}
           </p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={() => navigate('/employees')}>
@@ -356,8 +376,12 @@ export default function EmployeeDetailPage() {
                 <input value={employee.ImmigrationDetail.rightToWorkStatus || '—'} disabled />
               </div>
               <div className="field">
-                <label>Visa expiry</label>
-                <input value={employee.ImmigrationDetail.visaExpiry || '—'} disabled />
+                <label>Current visa expiry</label>
+                <input value={currentVisa?.expiryDate || '—'} disabled />
+              </div>
+              <div className="field">
+                <label>Current passport expiry</label>
+                <input value={currentPassport?.expiryDate || '—'} disabled />
               </div>
               <div className="field">
                 <label>EU Settlement Scheme status</label>
@@ -382,6 +406,42 @@ export default function EmployeeDetailPage() {
           )}
         </div>
       </form>
+
+      <HistoryRecordCard
+        title="Contract history"
+        hint="Past, current and scheduled future versions of this employee's job title, salary, hours and contract end date. A change with a future effective date shows as Scheduled and doesn't affect the current record until that date arrives."
+        records={contractData?.versions?.map((v) => ({
+          ...v,
+          statusLabel: v.isCurrent ? 'Current' : v.effectiveFrom > new Date().toISOString().slice(0, 10) ? 'Scheduled' : 'Past',
+        }))}
+        loading={contractLoading}
+        error={contractError}
+        canEdit={canEditContracts}
+        emptyForm={{ effectiveFrom: '', jobTitle: '', salary: '', contractedHoursPerWeek: '', contractEndDate: '', workLocation: '', changeReason: '' }}
+        submitLabel="Add contract change"
+        columns={[
+          { key: 'effectiveFrom', label: 'Effective From' },
+          { key: 'effectiveTo', label: 'Effective To', render: (r) => r.effectiveTo || '—' },
+          { key: 'jobTitle', label: 'Job Title' },
+          { key: 'salary', label: 'Salary' },
+          { key: 'contractedHoursPerWeek', label: 'Hours/Week' },
+          { key: 'statusLabel', label: 'Status', render: (r) => <StatusBadge status={r.isCurrent ? 'active' : r.statusLabel === 'Scheduled' ? 'pending' : 'closed'} /> },
+        ]}
+        formFields={[
+          { key: 'effectiveFrom', label: 'Effective from', type: 'date' },
+          { key: 'jobTitle', label: 'Job title' },
+          { key: 'salary', label: 'Salary', type: 'number' },
+          { key: 'contractedHoursPerWeek', label: 'Contracted hours/week', type: 'number' },
+          { key: 'contractEndDate', label: 'Contract end date', type: 'date' },
+          { key: 'workLocation', label: 'Work location' },
+          { key: 'changeReason', label: 'Reason for change' },
+        ]}
+        onSubmit={async (values) => {
+          await contractHistoryApi.create(id, values);
+          reloadContracts();
+          reload();
+        }}
+      />
 
       <div className="card">
         <h2>Next of kin / emergency contacts</h2>

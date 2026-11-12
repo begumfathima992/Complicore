@@ -20,9 +20,10 @@ ImmigrationDetail.init(
       type: DataTypes.ENUM('verified', 'pending', 'expired', 'not_required'),
       defaultValue: 'pending',
     },
-    visaType: { type: DataTypes.STRING },
-    visaExpiry: { type: DataTypes.DATEONLY },
-    shareCode: { type: DataTypes.STRING },
+    // visaType/visaExpiry/shareCode/sponsorshipReference used to live here
+    // as single current-value fields - they're now a full history in
+    // VisaRecord (see models/VisaRecord.js and the migration that moved
+    // them), since visas need past/current/future versions, not just one.
     // EU Settlement Scheme status - a distinct UK immigration category from
     // general right-to-work/visa status (an EU/EEA/Swiss national with
     // settled/pre-settled status has a different evidence trail than a
@@ -33,7 +34,6 @@ ImmigrationDetail.init(
       type: DataTypes.ENUM('settled', 'pre_settled', 'not_applicable'),
       defaultValue: 'not_applicable',
     },
-    sponsorshipReference: { type: DataTypes.STRING }, // e.g. Certificate of Sponsorship number
     complianceStatus: {
       type: DataTypes.ENUM('compliant', 'action_required', 'non_compliant'),
       defaultValue: 'compliant',

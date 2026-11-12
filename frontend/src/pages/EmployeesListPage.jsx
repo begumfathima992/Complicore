@@ -28,7 +28,7 @@ export default function EmployeesListPage() {
     },
     { key: 'jobTitle', label: 'Job Title' },
     { key: 'department', label: 'Department', render: (row) => row.Department?.name },
-    { key: 'employmentStatus', label: 'Status', render: (row) => <StatusBadge status={row.employmentStatus} /> },
+    { key: 'employmentStatus', label: 'Status', render: (row) => <StatusBadge status={row.effectiveStatus || row.employmentStatus} /> },
     { key: 'workLocation', label: 'Location' },
     { key: 'startDate', label: 'Start Date' },
   ];

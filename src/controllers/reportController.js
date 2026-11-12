@@ -2,6 +2,7 @@ const AppError = require('../utils/AppError');
 const { REPORTS } = require('../services/reportService');
 const { sendExport } = require('../services/exportService');
 const { hasPermissionKey } = require('../services/permissionService');
+const { maskValue, canSeeUnmasked } = require('../utils/maskSensitive');
 
 const VALID_FORMATS = ['json', 'csv', 'excel', 'pdf'];
 
@@ -43,8 +44,15 @@ async function runReport(req, res) {
 
   const { columns, rows } = await def.generate(req.accessScope, extractFilters(req.query));
 
-  if (format === 'json') return res.json({ report: reportKey, columns, rows });
-  return sendExport(res, format, def.label, columns, rows);
+  // The Visa Monitoring report's shareCode column carries the same
+  // sensitive-field treatment every other view of it gets.
+  const maskedRows =
+    reportKey === 'visa_monitoring' && !canSeeUnmasked(req.user.role)
+      ? rows.map((row) => ({ ...row, shareCode: maskValue(row.shareCode) }))
+      : rows;
+
+  if (format === 'json') return res.json({ report: reportKey, columns, rows: maskedRows });
+  return sendExport(res, format, def.label, columns, maskedRows);
 }
 
 module.exports = { listReports, runReport };

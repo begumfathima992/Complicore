@@ -33,7 +33,8 @@ Alert.init(
         'probation_ending',
         'contract_ending',
         'training_expiry',
-        'compliance_task'
+        'compliance_task',
+        'passport_expiry'
       ),
       allowNull: false,
     },
