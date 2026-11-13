@@ -6,6 +6,7 @@ import { StatusBadge } from './Badges';
 import EmployeePicker from './EmployeePicker';
 import HistoryRecordCard from './HistoryRecordCard';
 import { useApiData } from '../hooks/useApiData';
+import { normalizeNiNumber, isValidNiNumber, normalizeShareCode, isValidShareCode } from '../utils/ukValidators';
 
 const RIGHT_TO_WORK_STATUSES = ['verified', 'pending', 'expired', 'not_required'];
 const COMPLIANCE_STATUSES = ['compliant', 'action_required', 'non_compliant'];
@@ -16,6 +17,7 @@ const SETTLEMENT_STATUSES = ['not_applicable', 'settled', 'pre_settled'];
 
 const EMPTY = {
   nationality: '',
+  niNumber: '',
   rightToWorkStatus: 'pending',
   complianceStatus: 'compliant',
   settlementStatus: 'not_applicable',
@@ -77,9 +79,19 @@ export default function ImmigrationDetailEditor({ canEdit }) {
     e.preventDefault();
     setSaveError(null);
     setSaveSuccess(null);
+
+    const payload = { ...form };
+    if (payload.niNumber) {
+      payload.niNumber = normalizeNiNumber(payload.niNumber);
+      if (!isValidNiNumber(payload.niNumber)) {
+        setSaveError(new Error('NI number must be a valid UK format, e.g. AB123456C'));
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const { immigrationDetail } = await rightToWorkApi.updateImmigrationDetail(employeeId, form);
+      const { immigrationDetail } = await rightToWorkApi.updateImmigrationDetail(employeeId, payload);
       setForm({ ...EMPTY, ...immigrationDetail });
       setSaveSuccess('Compliance record saved.');
     } catch (err) {
@@ -125,6 +137,10 @@ export default function ImmigrationDetailEditor({ canEdit }) {
             <div className="field">
               <label>Nationality</label>
               <input value={form.nationality || ''} disabled={!canEdit} onChange={(e) => setField('nationality', e.target.value)} />
+            </div>
+            <div className="field">
+              <label>NI number</label>
+              <input value={form.niNumber || ''} disabled={!canEdit} placeholder="e.g. AB123456C" onChange={(e) => setField('niNumber', e.target.value)} />
             </div>
             <div className="field">
               <label>Right-to-work status</label>
@@ -188,7 +204,14 @@ export default function ImmigrationDetailEditor({ canEdit }) {
               { key: 'supersedesCurrent', label: 'Replaces the current visa?', type: 'checkbox' },
             ]}
             onSubmit={async (values) => {
-              await visaRecordsApi.create(employeeId, values);
+              const payload = { ...values };
+              if (payload.shareCode) {
+                payload.shareCode = normalizeShareCode(payload.shareCode);
+                if (!isValidShareCode(payload.shareCode)) {
+                  throw new Error('Share code must be exactly 9 letters/numbers');
+                }
+              }
+              await visaRecordsApi.create(employeeId, payload);
               reloadVisas();
             }}
           />

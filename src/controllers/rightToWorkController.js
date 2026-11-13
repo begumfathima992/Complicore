@@ -3,11 +3,21 @@ const AppError = require('../utils/AppError');
 const { scopeToChildWhere, scopeToEmployeeWhereById } = require('../utils/scopeToWhere');
 const { syncRightToWorkAlerts } = require('../services/alertService');
 const { recordAudit, snapshotChanges, recordFieldChanges, actorContextFrom } = require('../services/auditService');
+const { normalizeNiNumber, isValidNiNumber } = require('../utils/ukValidators');
+const { maskValue, canSeeUnmasked } = require('../utils/maskSensitive');
 
 // visaType/visaExpiry/shareCode/sponsorshipReference moved to VisaRecord
 // (see controllers/visaRecordController.js) - ImmigrationDetail now only
 // holds the fields below.
-const IMMIGRATION_DETAIL_FIELDS = ['nationality', 'rightToWorkStatus', 'complianceStatus', 'settlementStatus'];
+const IMMIGRATION_DETAIL_FIELDS = ['nationality', 'niNumber', 'rightToWorkStatus', 'complianceStatus', 'settlementStatus'];
+
+/** niNumber is masked in every response outside SUPER_ADMIN/EMPLOYER_ADMIN/HR_MANAGER, same tier as passport number/share code. */
+function serializeImmigrationDetail(detail, roleKey) {
+  if (!detail) return detail;
+  const json = detail.toJSON();
+  if (!canSeeUnmasked(roleKey)) json.niNumber = maskValue(json.niNumber);
+  return json;
+}
 
 const INCLUDE = [
   { model: Employee, attributes: ['id', 'firstName', 'lastName', 'employeeNumber'] },
@@ -56,6 +66,7 @@ async function createCheck(req, res) {
     newValue: check.status,
     employeeId,
     ...actorContextFrom(req),
+    companyId: employee.companyId, // overrides actorContextFrom's req.user.companyId, which is null for Super Admin
   });
   await syncRightToWorkAlerts();
 
@@ -74,6 +85,7 @@ async function updateCheck(req, res) {
   await recordFieldChanges('RightToWorkCheck', check.id, changes, {
     employeeId: check.employeeId,
     ...actorContextFrom(req),
+    companyId: check.companyId,
   });
   await syncRightToWorkAlerts();
 
@@ -93,7 +105,7 @@ async function getImmigrationDetail(req, res) {
   if (!employee) throw new AppError('Employee not found or not accessible', 404);
 
   const detail = await ImmigrationDetail.findOne({ where: { employeeId: employee.id } });
-  res.json({ immigrationDetail: detail });
+  res.json({ immigrationDetail: serializeImmigrationDetail(detail, req.user.role) });
 }
 
 async function upsertImmigrationDetail(req, res) {
@@ -106,6 +118,14 @@ async function upsertImmigrationDetail(req, res) {
   const contentUpdates = Object.fromEntries(
     Object.entries(req.body).filter(([key]) => IMMIGRATION_DETAIL_FIELDS.includes(key))
   );
+
+  if (contentUpdates.niNumber) {
+    contentUpdates.niNumber = normalizeNiNumber(contentUpdates.niNumber);
+    if (!isValidNiNumber(contentUpdates.niNumber)) {
+      throw new AppError('NI number must be a valid UK format, e.g. AB123456C', 400);
+    }
+  }
+
   const dbUpdates = { ...contentUpdates, lastCheckedAt: new Date(), lastCheckedByUserId: req.user.id };
 
   let detail = await ImmigrationDetail.findOne({ where: { employeeId: employee.id } });
@@ -118,6 +138,7 @@ async function upsertImmigrationDetail(req, res) {
       action: 'create',
       employeeId: employee.id,
       ...actorContextFrom(req),
+      companyId: employee.companyId, // overrides actorContextFrom's req.user.companyId, which is null for Super Admin
     });
   } else {
     const changes = snapshotChanges(detail, contentUpdates);
@@ -125,10 +146,11 @@ async function upsertImmigrationDetail(req, res) {
     await recordFieldChanges('ImmigrationDetail', detail.id, changes, {
       employeeId: employee.id,
       ...actorContextFrom(req),
+      companyId: employee.companyId,
     });
   }
 
-  res.json({ immigrationDetail: detail });
+  res.json({ immigrationDetail: serializeImmigrationDetail(detail, req.user.role) });
 }
 
 module.exports = { listChecks, getCheck, createCheck, updateCheck, getImmigrationDetail, upsertImmigrationDetail };

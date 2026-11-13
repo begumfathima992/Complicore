@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Loading, ErrorBanner, SuccessBanner } from './Feedback';
 import DataTable from './DataTable';
-import { ApiError } from '../api/client';
 
 /**
  * Generic past/current/future history list + "add a new record" form,
@@ -31,7 +30,11 @@ export default function HistoryRecordCard({ title, hint, records, loading, error
       setForm(emptyForm);
       setFormSuccess('Saved.');
     } catch (err) {
-      setFormError(err instanceof ApiError ? err : new Error('Save failed'));
+      // Preserves a client-side validation message (a plain Error thrown
+      // from onSubmit before it ever calls the API) exactly like an
+      // ApiError's real backend message - only falls back to a generic
+      // label when the error truly carries no message of its own.
+      setFormError(err instanceof Error ? err : new Error('Save failed'));
     } finally {
       setSubmitting(false);
     }

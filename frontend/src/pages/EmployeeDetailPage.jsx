@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/Badges';
 import DataTable from '../components/DataTable';
 import HistoryRecordCard from '../components/HistoryRecordCard';
 import { ApiError } from '../api/client';
+import { normalizeUkPhone, isValidUkPhone } from '../utils/ukValidators';
 
 const EMPLOYMENT_STATUSES = ['active', 'on_leave', 'suspended', 'terminated'];
 
@@ -73,6 +74,19 @@ export default function EmployeeDetailPage() {
     e.preventDefault();
     setSaveError(null);
     setSaveSuccess(null);
+
+    if (form.telephone) {
+      const normalizedPhone = normalizeUkPhone(form.telephone);
+      if (!isValidUkPhone(normalizedPhone)) {
+        setSaveError(new Error('Phone must be a valid UK number, e.g. 07700 900000 or +44 7700 900000'));
+        return;
+      }
+    }
+    if (!isOwnRecordAsEmployee && form.contractEndDate && form.startDate && form.contractEndDate <= form.startDate) {
+      setSaveError(new Error('Contract end date must be after the start date (Employed on)'));
+      return;
+    }
+
     setSaving(true);
     try {
       // Employees editing their own record: only contact fields are sent -
@@ -372,6 +386,10 @@ export default function EmployeeDetailPage() {
                 <input value={employee.ImmigrationDetail.nationality || '—'} disabled />
               </div>
               <div className="field">
+                <label>NI number</label>
+                <input value={employee.ImmigrationDetail.niNumber || '—'} disabled />
+              </div>
+              <div className="field">
                 <label>Right-to-work status</label>
                 <input value={employee.ImmigrationDetail.rightToWorkStatus || '—'} disabled />
               </div>
@@ -437,6 +455,9 @@ export default function EmployeeDetailPage() {
           { key: 'changeReason', label: 'Reason for change' },
         ]}
         onSubmit={async (values) => {
+          if (values.contractEndDate && employee.startDate && values.contractEndDate <= employee.startDate) {
+            throw new Error('Contract end date must be after the start date (Employed on)');
+          }
           await contractHistoryApi.create(id, values);
           reloadContracts();
           reload();

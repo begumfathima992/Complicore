@@ -10,6 +10,7 @@ const {
   getViewUrl,
   getDownloadUrl,
   updateDocument,
+  deleteDocument,
 } = require('../controllers/documentController');
 
 const router = express.Router();
@@ -23,5 +24,6 @@ router.get('/:id', authorize(FEATURES.DOCUMENTS, 'read'), getDocument);
 router.get('/:id/view-url', authorize(FEATURES.DOCUMENTS, 'read'), getViewUrl);
 router.get('/:id/download-url', authorize(FEATURES.DOCUMENTS, 'read'), getDownloadUrl);
 router.patch('/:id', authorize(FEATURES.DOCUMENTS, 'update'), updateDocument);
+router.delete('/:id', authorize(FEATURES.DOCUMENTS, 'delete'), deleteDocument);
 
 module.exports = router;

@@ -1,8 +1,10 @@
 node_modules/
 .env
-.env.local
-.env.*.local
+.env.*
 npm-debug.log*
+
+# local file uploads (production storage is Cloudflare R2, not local disk)
+uploads/
 
 # build output
 frontend/dist/

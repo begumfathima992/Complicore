@@ -52,6 +52,7 @@ export const documentsApi = {
   getViewUrl: (id) => api.get(`/documents/${id}/view-url`),
   getDownloadUrl: (id) => api.get(`/documents/${id}/download-url`),
   update: (id, data) => api.patch(`/documents/${id}`, data),
+  remove: (id) => api.delete(`/documents/${id}`),
 };
 
 export const changeOfCircumstancesApi = {

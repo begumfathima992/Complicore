@@ -1,5 +1,6 @@
 const { DataTypes, Model } = require('sequelize');
 const sequelize = require('../config/database');
+const { encryptField, decryptField } = require('../utils/fieldEncryption');
 
 /**
  * Right-to-work / sponsorship compliance data for an employee.
@@ -16,6 +17,18 @@ ImmigrationDetail.init(
     // RIGHT_TO_WORK permission gate instead of being visible on every
     // general employee record view (see reportService.js's nationality report).
     nationality: { type: DataTypes.STRING },
+    // Encrypted at rest + masked in API responses to everyone except
+    // SUPER_ADMIN/EMPLOYER_ADMIN/HR_MANAGER (src/utils/maskSensitive.js),
+    // same treatment as VisaRecord.shareCode / IdentityDocument.documentNumber.
+    niNumber: {
+      type: DataTypes.STRING,
+      set(value) {
+        this.setDataValue('niNumber', encryptField(value));
+      },
+      get() {
+        return decryptField(this.getDataValue('niNumber'));
+      },
+    },
     rightToWorkStatus: {
       type: DataTypes.ENUM('verified', 'pending', 'expired', 'not_required'),
       defaultValue: 'pending',

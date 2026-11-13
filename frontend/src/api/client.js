@@ -86,6 +86,17 @@ async function refreshAccessToken() {
   return inFlight;
 }
 
+// These three auth endpoints return a 401 as a direct, meaningful answer
+// from that action itself (wrong password, invalid/expired refresh token,
+// wrong current password) - never as "your access token expired", since
+// login/refresh don't even send a bearer token and change-password's 401
+// is about the typed current-password field, not the Authorization header.
+// Running them through the refresh-and-logout dance below would discard
+// the backend's real message and show the misleading "session expired"
+// error instead - e.g. a wrong login password would incorrectly look like
+// an expired session rather than "Invalid credentials".
+const AUTH_SELF_SERVICE_PATHS = ['/auth/login', '/auth/refresh', '/auth/change-password'];
+
 /**
  * Core request helper. Every API module in this folder builds on this.
  * - Attaches the bearer token automatically.
@@ -93,6 +104,7 @@ async function refreshAccessToken() {
  *   only a refresh-token failure (missing/invalid/expired, or the retried
  *   request 401-ing again) triggers onUnauthorized() and the "session
  *   expired" error; a plain expired access token never reaches the user.
+ *   Skipped entirely for AUTH_SELF_SERVICE_PATHS - see above.
  * - Parses JSON error bodies from the backend ({ error: "..." }) so pages
  *   can show the real message instead of a generic failure string.
  * - `blob: true` switches to a binary response, for report file downloads.
@@ -100,7 +112,7 @@ async function refreshAccessToken() {
 export async function request(path, { method = 'GET', body, params, blob = false } = {}, _retried = false) {
   const res = await rawFetch(path, { method, body, params, token: getToken() });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !AUTH_SELF_SERVICE_PATHS.includes(path)) {
     if (!_retried) {
       const newAccessToken = await refreshAccessToken();
       if (newAccessToken) {

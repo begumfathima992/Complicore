@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { employeesApi } from '../api';
 import { ErrorBanner } from '../components/Feedback';
 import { ApiError } from '../api/client';
+import { normalizeUkPhone, isValidUkPhone } from '../utils/ukValidators';
 
 const EMPTY = {
   employeeNumber: '',
   firstName: '',
   lastName: '',
+  dateOfBirth: '',
   email: '',
+  telephone: '',
   jobTitle: '',
   startDate: '',
   workLocation: '',
@@ -25,6 +28,12 @@ export default function EmployeeCreatePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+
+    if (form.telephone && !isValidUkPhone(normalizeUkPhone(form.telephone))) {
+      setError(new Error('Phone must be a valid UK number, e.g. 07700 900000 or +44 7700 900000'));
+      return;
+    }
+
     setSubmitting(true);
     try {
       const { employee } = await employeesApi.create(form);
@@ -65,8 +74,16 @@ export default function EmployeeCreatePage() {
             <input required value={form.lastName} onChange={(e) => setField('lastName', e.target.value)} />
           </div>
           <div className="field">
+            <label>Date of birth</label>
+            <input type="date" value={form.dateOfBirth} onChange={(e) => setField('dateOfBirth', e.target.value)} />
+          </div>
+          <div className="field">
             <label>Email *</label>
             <input type="email" required value={form.email} onChange={(e) => setField('email', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Phone</label>
+            <input value={form.telephone} placeholder="e.g. 07700 900000" onChange={(e) => setField('telephone', e.target.value)} />
           </div>
           <div className="field">
             <label>Job title</label>

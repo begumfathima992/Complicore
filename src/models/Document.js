@@ -26,7 +26,8 @@ Document.init(
         'qualification',
         'certificate',
         'training_record',
-        'other'
+        'other',
+        'payslip'
       ),
       allowNull: false,
     },
@@ -34,6 +35,11 @@ Document.init(
     fileName: { type: DataTypes.STRING },
     uploadDate: { type: DataTypes.DATEONLY, defaultValue: DataTypes.NOW },
     expiryDate: { type: DataTypes.DATEONLY }, // null for documents that don't expire (e.g. some contracts)
+    // Which month a payslip covers (first-of-month by convention) - required
+    // for documentType 'payslip', unused otherwise. Payslips deliberately
+    // skip the version/supersede behaviour below: each month's payslip is
+    // its own current document, never replacing a prior month's.
+    periodMonth: { type: DataTypes.DATEONLY },
     status: {
       type: DataTypes.ENUM('valid', 'expiring_soon', 'expired', 'pending_review'),
       defaultValue: 'pending_review',

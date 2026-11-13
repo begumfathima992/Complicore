@@ -45,7 +45,14 @@ async function getUploadUrl(req, res) {
   const employee = await Employee.findOne({ where: scopeToEmployeeWhereById(req.accessScope, employeeId) });
   if (!employee) throw new AppError('Employee not found or not accessible', 404);
 
-  const previous = await Document.findOne({ where: { employeeId, documentType, isCurrent: true } });
+  if (documentType === 'payslip' && !req.body.periodMonth) {
+    throw new AppError('periodMonth is required for payslips', 400);
+  }
+
+  // Payslips never supersede each other - each month's payslip is its own
+  // current document, so there's no "previous version" to bump from.
+  const previous =
+    documentType === 'payslip' ? null : await Document.findOne({ where: { employeeId, documentType, isCurrent: true } });
   const version = previous ? previous.version + 1 : 1;
   const documentId = storageService.generateDocumentId();
 
@@ -68,19 +75,25 @@ async function getUploadUrl(req, res) {
  * document of the same type, exactly as before.
  */
 async function createDocument(req, res) {
-  const { documentId, employeeId, documentType, fileKey, fileName, version, expiryDate } = req.body;
+  const { documentId, employeeId, documentType, fileKey, fileName, version, expiryDate, periodMonth } = req.body;
   if (!documentId || !employeeId || !documentType || !fileKey || !version) {
     throw new AppError('documentId, employeeId, documentType, fileKey and version are required', 400);
+  }
+  if (documentType === 'payslip' && !periodMonth) {
+    throw new AppError('periodMonth is required for payslips', 400);
   }
 
   const employee = await Employee.findOne({ where: scopeToEmployeeWhereById(req.accessScope, employeeId) });
   if (!employee) throw new AppError('Employee not found or not accessible', 404);
 
-  const previous = await Document.findOne({
-    where: { employeeId, documentType, isCurrent: true },
-    order: [['version', 'DESC']],
-  });
-  if (previous) await previous.update({ isCurrent: false });
+  // Payslips never supersede each other - see getUploadUrl() above.
+  if (documentType !== 'payslip') {
+    const previous = await Document.findOne({
+      where: { employeeId, documentType, isCurrent: true },
+      order: [['version', 'DESC']],
+    });
+    if (previous) await previous.update({ isCurrent: false });
+  }
 
   const document = await Document.create({
     id: documentId,
@@ -89,6 +102,7 @@ async function createDocument(req, res) {
     fileKey,
     fileName,
     expiryDate,
+    periodMonth: documentType === 'payslip' ? periodMonth : null,
     version,
     companyId: employee.companyId,
     uploadedByUserId: req.user.id,
@@ -103,6 +117,7 @@ async function createDocument(req, res) {
     newValue: `${documentType} (v${document.version})`,
     employeeId,
     ...actorContextFrom(req),
+    companyId: employee.companyId, // overrides actorContextFrom's req.user.companyId, which is null for Super Admin
   });
   await syncDocumentAlerts();
 
@@ -123,6 +138,7 @@ async function getViewUrl(req, res) {
     action: 'view',
     employeeId: document.employeeId,
     ...actorContextFrom(req),
+    companyId: document.companyId,
   });
 
   res.json({ url, expiresInSeconds });
@@ -141,6 +157,7 @@ async function getDownloadUrl(req, res) {
     action: 'download',
     employeeId: document.employeeId,
     ...actorContextFrom(req),
+    companyId: document.companyId,
   });
 
   res.json({ url, expiresInSeconds });
@@ -169,10 +186,41 @@ async function updateDocument(req, res) {
   await recordFieldChanges('Document', document.id, changes, {
     employeeId: document.employeeId,
     ...actorContextFrom(req),
+    companyId: document.companyId,
   });
 
   await syncDocumentAlerts();
   res.json({ document });
+}
+
+/**
+ * Hard delete: removes the R2 object and the DB row together, and records
+ * an audit entry (who/what/when) first - a genuine, irreversible delete,
+ * not the supersede-but-retain pattern re-uploads use. Restricted to
+ * whichever roles hold FULL on DOCUMENTS (SUPER_ADMIN/EMPLOYER_ADMIN/
+ * HR_MANAGER today) via the route's authorize() call - Manager and
+ * Employee access levels don't include the 'delete' action.
+ */
+async function deleteDocument(req, res) {
+  const where = { ...(await scopeToChildWhere(req.accessScope)), id: req.params.id };
+  const document = await Document.findOne({ where });
+  if (!document) throw new AppError('Document not found or not accessible', 404);
+
+  await storageService.deleteObject({ key: document.fileKey });
+
+  await recordAudit({
+    entityType: 'Document',
+    entityId: document.id,
+    action: 'delete',
+    fieldName: 'documentType',
+    oldValue: `${document.documentType} (v${document.version})`,
+    employeeId: document.employeeId,
+    ...actorContextFrom(req),
+    companyId: document.companyId,
+  });
+
+  await document.destroy();
+  res.status(204).end();
 }
 
 module.exports = {
@@ -183,4 +231,5 @@ module.exports = {
   getViewUrl,
   getDownloadUrl,
   updateDocument,
+  deleteDocument,
 };

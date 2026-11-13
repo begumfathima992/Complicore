@@ -3,6 +3,7 @@ const AppError = require('../utils/AppError');
 const { scopeToEmployeeWhereById } = require('../utils/scopeToWhere');
 const { recordAudit, actorContextFrom } = require('../services/auditService');
 const { promoteContractVersionIfDue } = require('../services/scheduledChangeService');
+const { assertDateAfter } = require('../utils/dateOrder');
 
 const INCLUDE = [{ model: User, as: 'createdBy', attributes: ['id', 'email'] }];
 
@@ -38,6 +39,9 @@ async function createVersion(req, res) {
 
   const { effectiveFrom, jobTitle, salary, contractedHoursPerWeek, contractEndDate, workLocation, changeReason } = req.body;
   if (!effectiveFrom) throw new AppError('effectiveFrom is required', 400);
+
+  // "Employed on" is read literally as Employee.startDate, not effectiveFrom.
+  assertDateAfter(contractEndDate, employee.startDate, 'Contract end date must be after the start date (Employed on)');
 
   let version = await EmployeeContractHistory.create({
     employeeId: employee.id,

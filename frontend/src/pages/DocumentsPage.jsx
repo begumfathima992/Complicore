@@ -13,6 +13,7 @@ const DOCUMENT_TYPES = [
   'right_to_work_evidence',
   'visa',
   'employment_contract',
+  'payslip',
   'dbs_check',
   'qualification',
   'certificate',
@@ -26,11 +27,12 @@ const STATUSES = ['valid', 'expiring_soon', 'expired', 'pending_review'];
 const ALLOWED_TYPES = { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG' };
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-const EMPTY_FORM = { employeeId: '', documentType: 'passport_id', expiryDate: '' };
+const EMPTY_FORM = { employeeId: '', documentType: 'passport_id', expiryDate: '', periodMonth: '' };
 
 export default function DocumentsPage() {
   const { user } = useAuth();
   const canEditStatus = user.role !== 'EMPLOYEE';
+  const canDelete = ['SUPER_ADMIN', 'EMPLOYER_ADMIN', 'HR_MANAGER'].includes(user.role);
 
   const [showSuperseded, setShowSuperseded] = useState(false);
   const { data, loading, error, reload } = useApiData(
@@ -81,6 +83,14 @@ export default function DocumentsPage() {
       setFormError(new Error('Choose a PDF, JPG, or PNG file first.'));
       return;
     }
+    if (form.documentType === 'payslip' && !form.periodMonth) {
+      setFormError(new Error('Month/year is required for a payslip.'));
+      return;
+    }
+    // <input type="month"> gives 'YYYY-MM' - the backend's periodMonth
+    // column is a full date, first-of-month by convention.
+    const periodMonth = form.documentType === 'payslip' ? `${form.periodMonth}-01` : undefined;
+
     setSubmitting(true);
     try {
       setUploadStage('requesting');
@@ -90,6 +100,7 @@ export default function DocumentsPage() {
         fileName: file.name,
         contentType: file.type,
         fileSizeBytes: file.size,
+        periodMonth,
       });
 
       setUploadStage('uploading');
@@ -104,6 +115,7 @@ export default function DocumentsPage() {
         fileName: file.name,
         version,
         expiryDate: form.expiryDate || undefined,
+        periodMonth,
       });
 
       setFormSuccess('Document uploaded.');
@@ -145,10 +157,27 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleDelete = async (doc) => {
+    if (!window.confirm(`Permanently delete this ${doc.documentType.replace(/_/g, ' ')} (v${doc.version})? This cannot be undone.`)) {
+      return;
+    }
+    setRowError(null);
+    setRowBusy(`${doc.id}:delete`);
+    try {
+      await documentsApi.remove(doc.id);
+      reload();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err : new Error('Delete failed'));
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
   const columns = [
     { key: 'employee', label: 'Employee', render: (row) => (row.Employee ? `${row.Employee.firstName} ${row.Employee.lastName}` : '—') },
     { key: 'documentType', label: 'Type', render: (row) => row.documentType.replace(/_/g, ' ') },
     { key: 'version', label: 'Version', render: (row) => `v${row.version}${row.isCurrent ? '' : ' (superseded)'}` },
+    { key: 'periodMonth', label: 'Period', render: (row) => row.periodMonth || '—' },
     { key: 'expiryDate', label: 'Expiry' },
     {
       key: 'status',
@@ -183,6 +212,11 @@ export default function DocumentsPage() {
           <button type="button" className="btn btn-small btn-secondary" disabled={rowBusy === `${row.id}:download`} onClick={() => openDocument(row, 'download')}>
             {rowBusy === `${row.id}:download` ? '…' : 'Download'}
           </button>
+          {canDelete && (
+            <button type="button" className="btn btn-small btn-danger" disabled={rowBusy === `${row.id}:delete`} onClick={() => handleDelete(row)}>
+              {rowBusy === `${row.id}:delete` ? '…' : 'Delete'}
+            </button>
+          )}
         </div>
       ),
     },
@@ -224,6 +258,12 @@ export default function DocumentsPage() {
             <label>Expiry date</label>
             <input type="date" value={form.expiryDate} onChange={(e) => setField('expiryDate', e.target.value)} />
           </div>
+          {form.documentType === 'payslip' && (
+            <div className="field">
+              <label>Payslip month/year *</label>
+              <input type="month" required value={form.periodMonth} onChange={(e) => setField('periodMonth', e.target.value)} />
+            </div>
+          )}
         </div>
         <div className="btn-row" style={{ marginTop: 16 }}>
           <button type="submit" className="btn" disabled={submitting}>

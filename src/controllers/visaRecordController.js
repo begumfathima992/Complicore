@@ -5,6 +5,7 @@ const { recordAudit, actorContextFrom } = require('../services/auditService');
 const { promoteVisaRecordIfDue } = require('../services/scheduledChangeService');
 const { syncVisaRecordAlerts } = require('../services/alertService');
 const { maskValue, canSeeUnmasked } = require('../utils/maskSensitive');
+const { normalizeShareCode, isValidShareCode } = require('../utils/ukValidators');
 
 const INCLUDE = [
   { model: User, as: 'createdBy', attributes: ['id', 'email'] },
@@ -47,7 +48,15 @@ async function createRecord(req, res) {
   const employee = await Employee.findOne({ where: scopeToEmployeeWhereById(req.accessScope, req.params.employeeId) });
   if (!employee) throw new AppError('Employee not found or not accessible', 404);
 
-  const { visaType, shareCode, startDate, expiryDate, sponsorshipReference, documentId, notes, supersedesCurrent } = req.body;
+  const { visaType, startDate, expiryDate, sponsorshipReference, documentId, notes, supersedesCurrent } = req.body;
+
+  let shareCode = req.body.shareCode;
+  if (shareCode) {
+    shareCode = normalizeShareCode(shareCode);
+    if (!isValidShareCode(shareCode)) {
+      throw new AppError('Share code must be exactly 9 letters/numbers', 400);
+    }
+  }
 
   let record = await VisaRecord.create({
     employeeId: employee.id,

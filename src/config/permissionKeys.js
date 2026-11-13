@@ -26,6 +26,7 @@ const KEY_MAP = {
   'documents:read': 'documents.view',
   'documents:create': 'documents.upload',
   'documents:update': 'documents.manage',
+  'documents:delete': 'documents.delete',
 
   'holiday:read': 'holiday.view',
   'holiday:create': 'holiday.request',
